@@ -1,0 +1,11 @@
+﻿numpy
+pandas
+pyarrow
+faiss-cpu
+scikit-learn
+PyYAML
+tqdm
+soundfile
+librosa
+s3prl==0.4.15 ; python_version>="3.8"
+pytest

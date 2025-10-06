@@ -1,0 +1,7 @@
+﻿# Placeholder backbone config for urgent2026 pipeline
+backbone:
+  name: "DummyBackbone"
+  hidden_size: 256
+optimizer:
+  name: "Adam"
+  lr: 0.001
