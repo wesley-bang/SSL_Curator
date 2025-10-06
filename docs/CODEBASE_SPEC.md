@@ -1,22 +1,24 @@
 # URGENT 2026 – Curator Codebase Spec
-**Spec-Version:** 1.1 (2025-10-07)
+**Spec-Version:** 1.2 (2025-10-07)
 
+<!-- SOURCE_OF_TRUTH_ANCHOR_V1_2 -->
 > **AI implementers (GPT-5-Codex in VS Code):**  
-> This file is the **source of truth**. Read it and follow it exactly.  
-> - **Do not** invent paths or rename files not listed here.  
-> - All parameters must come from YAML configs (no magic numbers).  
-> - Keep CLIs stable. If you improve something, keep the same public interfaces.  
-> - If something is underspecified, emit a TODO stub **without** changing the public API.
+> This file is the **source of truth**. Always re-open and parse this file before making changes.  
+> - **Do not** invent paths or rename files.  
+> - All parameters must come from YAML (no magic numbers).  
+> - Keep CLIs stable; if you improve internals, **preserve public interfaces**.  
+> - If something is underspecified, emit a TODO stub **without changing the public API**.
 
-## How to invoke me (simple)
-- Keep this file **open** in VS Code when you prompt GPT-5-Codex.
-- To build any layer, just say in chat:
-  **`Execute: BATCH <N>`**  
-  where `<N>` ∈ { **0, 1, 2, 3, 4, 5, 6** } (see **Batch Index** below).
-- You can also run everything: **`Execute: BATCH 0-6`** (sequential). We recommend running them in order to catch errors early.
+## How to invoke me (simple, robust)
+- Keep this file **open** in VS Code when you prompt.
+- To build any step, say: **`Execute: BATCH <N><LETTER>`**, e.g., `Execute: BATCH 0A`.  
+  You can also run full batches (`BATCH 0`, `BATCH 1`, …), or the entire pipeline (`BATCH 0-6`), but small sub-batches are safer.
+- If output would exceed limits, **stop** and reply only with:  
+  `READY FOR CONTINUE: BATCH <N><LETTER> PART <k>`  
+  I will reply with `CONTINUE: BATCH <N><LETTER> PART <k>`.
 
 ## OUTPUT FORMAT (must follow exactly)
-For every file you generate, output **one fenced code block per file** with a header line:
+When you cannot auto-apply edits to the workspace, output **one file per fenced block**:
 
 ```
 
@@ -24,71 +26,36 @@ For every file you generate, output **one fenced code block per file** with a he
 
 ```
 
-Rules:
-- **One file per block.**
-- **Full content** (no ellipses, no “snippets”).
-- Use **exact paths** defined in this spec.
-- **Overwrite** files if they already exist.
+Rules: one file per block; full content (no ellipses); exact paths from this spec; **overwrite** existing files.
 
-## Batch Index (what each batch does & why)
-
-- **Batch 0 — Datasets (foundation):**  
-  Create `datasets/` and `configs/datasets/`; implement the single CLI to **download/prepare/manifest** data.  
-  **Why:** All later stages depend on standardized manifests.
-
-- **Batch 1 — Scaffold:**  
-  Create the full repo tree, stubs, `requirements.txt`, `pyproject.toml`, `.gitignore`, `Makefile`, minimal `README.md`.  
-  **Why:** A visible structure reduces confusion and anchors subsequent code.
-
-- **Batch 2 — Selector plumbing:**  
-  Implement `selector/registry.py`, `selector/base.py`, `selector/__main__.py`, `selector/cvar.py`, plus `configs/select/cvar.yaml`, `configs/quotas.yaml`.  
-  **Why:** Selection is the contribution; needs a stable plugin API/CLI.
-
-- **Batch 3 — Scoring stub:**  
-  Implement `scoring/score.py` + `configs/scoring.yaml`. Read manifest JSONL → emit required `scores.parquet` columns.  
-  **Why:** Enables end-to-end wiring before MOS/SSL backends are finalized.
-
-- **Batch 4 — Trainers:**  
-  Implement `trainers/bsrrn.py` (+ config hooks) to call the official baseline and route artifacts to `experiments/{exp_name}`.  
-  **Why:** Centralizes training hygiene (configs, logs, checkpoints).
-
-- **Batch 5 — Eval, scripts, tests:**  
-  Add `eval/` stubs, shell scripts under `scripts/`, and smoke tests.  
-  **Why:** Close the loop and make CI/automation easy.
-
-- **Batch 6 — README polish:**  
-  Replace `README.md` with Quickstart, repo map, datasets usage, add-a-selector guide, reproducibility.  
-  **Why:** New collaborators should understand the repo in 60 seconds.
+## Does smaller sub-batches hurt performance?
+No—breaking tasks into smaller, labeled sub-batches usually **improves reliability** (less truncation, fewer hallucinations). To maintain global coherence, **each sub-batch starts with a “What & Why”** summary reminding you how outputs are used later. If context feels lost, **re-sync** to this spec (anchor `SOURCE_OF_TRUTH_ANCHOR_V1_2`).
 
 ---
 
 ## Executive Summary (≤200 words)
-
-We are building a clean, extensible pipeline for **Universal Speech Enhancement (URGENT 2026 – Track-1)** focused on **data curation over scale**. The pipeline is:
+We’re building a clean, extensible pipeline for **Universal Speech Enhancement (URGENT 2026 – Track-1)** where the contribution is **data curation, not brute-scale**. The pipeline is:
 
 **score → select → train → eval**  
 1) **Scoring** computes per-utterance proxies (MOS, SSL embeddings, SDR/eSTOI proxies).  
-2) **Selection** chooses a training subset via **pluggable strategies** (CVaR, coverage-only, MOS-threshold) with **coverage quotas** and **diversity controls**.  
-3) **Training** wraps the official baselines (BSRNN/FlowSE) to train on the curated list.  
-4) **Evaluation** runs official metrics and our tail/slice analyses.
+2) **Selection** chooses a subset via pluggable strategies (CVaR, coverage-only, MOS-threshold) with **coverage quotas** and **diversity**.  
+3) **Training** wraps official baselines (BSRNN/FlowSE) to train on the curated subset.  
+4) **Evaluation** runs official metrics and tail/slice analyses.
 
-Everything is **config-driven**, **reproducible**, and designed for **fast iteration**: new selectors are one file with a decorator; experiments are self-contained under `experiments/{exp_name}`. A **datasets** module standardizes “download/prepare/manifest” into a single CLI so training needs no code changes when switching datasets. The repo must be understandable in 60 seconds, with discoverable commands and sensible defaults.
+Everything is **config-driven**, **reproducible**, and easy to extend: add a selector by dropping a file + decorator; switch datasets via a unified **datasets** CLI that standardizes manifests, so training doesn’t change.
 
 ---
 
 ## North-Star Principles
-
-- **One folder = one purpose:** `scoring/`, `selector/`, `trainers/`, `eval/`, `datasets/`, `tools/`.  
-- **Config-driven:** YAML for paths, quotas, α, K hours, models, dataset choice.  
-- **Pluggable selection:** add a file + `@register_selector`.  
-- **Experiment hygiene:** each run writes a frozen config snapshot, selection CSV + meta hashes, logs, metrics, and checkpoints.  
-- **No hard-coding:** respect env overrides (e.g., `DATA_ROOT`) and YAML.  
-- **Flexibility:** easy subsetting (e.g., English-only, specific SR, distortion slices).
+- **One folder = one purpose** (`scoring/`, `selector/`, `datasets/`, `trainers/`, `eval/`, `tools/`).
+- **Config > code** (paths, quotas, α, K hours, dataset choice).
+- **Pluggable selection** via registry and base class.
+- **Experiment hygiene** (frozen config, curated CSV, logs, metrics, checkpoints).
+- **Flexibility knobs** (English-only, 16 kHz-only, cap hours) in `configs/data.yaml`.
 
 ---
 
 ## Repository Layout (authoritative)
-
 ```
 
 urgent2026-curator/
@@ -101,7 +68,7 @@ urgent2026-curator/
 │  └─ CODEBASE_SPEC.md          # ← this file
 ├─ configs/
 │  ├─ base.yaml
-│  ├─ data.yaml                 # global dataset routing
+│  ├─ data.yaml                 # global dataset routing + filters
 │  ├─ scoring.yaml
 │  ├─ quotas.yaml
 │  ├─ select/
@@ -126,9 +93,9 @@ urgent2026-curator/
 ├─ scoring/
 │  ├─ **init**.py
 │  ├─ score.py                  # CLI: manifests → scores.parquet
-│  ├─ mos_backends/             # DNSMOS/NISQA/UTMOS adapters
-│  ├─ ssl_backends/             # HuBERT/WavLM (S3PRL) embeddings
-│  ├─ proxies/                  # SDR/eSTOI proxies, ASR consistency
+│  ├─ mos_backends/
+│  ├─ ssl_backends/
+│  ├─ proxies/
 │  └─ utils.py
 ├─ selector/
 │  ├─ **init**.py
@@ -179,75 +146,44 @@ urgent2026-curator/
 
 ````
 
-**One-liners:**
-- `scoring/`: Reads manifests, computes proxies/embeddings → `scores.parquet`.  
-- `selector/`: Pluggable selection strategies, outputs `selection.csv` (+ meta).  
-- `datasets/`: One CLI to **download/prepare/manifest** any dataset; **standardized** JSONL manifests so training code never changes.  
-- `trainers/`: Thin wrappers that call the **official** baseline trainer and route artifacts to `experiments/{exp_name}`.  
-- `eval/`: Evaluation + slice/tail summaries.  
-- `tools/`: Small helpers for manifests, hashing, name generation.  
-- `configs/`: Everything configurable (paths, quotas, α, K hours, dataset choice).
-
 ---
 
-## Dataflow & Where Each Part Is Used
+## Dataflow (who consumes what)
+1) **datasets** → writes **manifests** (`data/manifests/<dataset>/{train,dev,test}.jsonl`).  
+   → Input for **scoring**.
 
-1) **datasets** produces **manifests** (`data/manifests/<dataset>/{train,dev,test}.jsonl`).  
-   → Inputs for `scoring/score.py`.
+2) **scoring** → reads manifest → writes `data/scores/train_scores.parquet`.  
+   → Input for **selector**.
 
-2) **scoring** reads **train** manifest → writes `data/scores/train_scores.parquet`.  
-   → `selector/` consumes this parquet (plus `quotas.yaml`).
+3) **selector** → reads `scores.parquet` (+ `quotas.yaml`) → writes `data/curated/curated_train_*.csv` (+ meta).  
+   → Input for **trainers**.
 
-3) **selector** reads `scores.parquet` + quotas → writes `data/curated/curated_train_*.csv` (+ meta JSON with hashes).  
-   → `trainers/` use the curated list to filter data loading.
-
-4) **trainers** train the baseline model on the curated set → write logs/checkpoints under `experiments/{exp_name}`.  
-   → `eval/` loads checkpoint to compute official metrics.
+4) **trainers** → train baseline on curated set → write artifacts under `experiments/{exp_name}`.  
+   → Input for **eval**.
 
 ---
 
 ## Public Schemas (authoritative)
 
-### Manifest JSONL row (produced by `datasets/`)
+### Manifest JSONL row (from `datasets/`)
 ```json
-{
-  "utt_id": "unique_string",
-  "path": "/abs/path/to/file.wav",
-  "duration_sec": 3.21,
-  "sr": 16000,
-  "language": "en",
-  "distortion": "noise",
-  "split": "train"
-}
+{"utt_id":"unique","path":"/abs/path.wav","duration_sec":3.21,"sr":16000,"language":"en","distortion":"noise","split":"train"}
 ````
 
-### `scores.parquet` columns (produced by `scoring/score.py`)
+### `scores.parquet` columns (from `scoring/score.py`)
 
-Required:
+Required: `utt_id:str`, `path:str`, `duration_sec:float`, `sr:int`, `language:str?`, `distortion:str?`, `loss_proxy:float`, `ssl_embed:list[float]`.
+Optional: `mos_dns`, `mos_nisqa`, `uncert`, `asr_consistency`, …
 
-* `utt_id: str`
-* `path: str`
-* `duration_sec: float`
-* `sr: int`
-* `language: str` (optional but recommended)
-* `distortion: str` (optional but recommended)
-* `loss_proxy: float` (tail surrogate; higher = “harder”)
-* `ssl_embed: list[float]` (vector; JSON/bytes if needed)
+### `selection.csv` (from `selector/`)
 
-Optional:
-
-* `mos_dns`, `mos_nisqa`, `uncert`, `asr_consistency`, …
-
-### `selection.csv` (produced by `selector/`)
-
-* CSV with at least `utt_id`.
-* Sidecar `${out}_meta.json` with: {config snapshot, scores path, n_selected, input hashes}.
+CSV with at least `utt_id`; sidecar `${out}_meta.json` with config snapshot, `scores_path`, `n_selected`, input hashes.
 
 ---
 
 ## CLI Contracts (verbatim)
 
-**Datasets:**
+**Datasets**
 
 ```bash
 python -m datasets.cli \
@@ -259,7 +195,7 @@ python -m datasets.cli \
 # split:  train | dev | test | all
 ```
 
-**Scoring:**
+**Scoring**
 
 ```bash
 python -m scoring.score \
@@ -268,7 +204,7 @@ python -m scoring.score \
   --out data/scores/train_scores.parquet
 ```
 
-**Selection:**
+**Selection**
 
 ```bash
 python -m selector \
@@ -278,7 +214,7 @@ python -m selector \
   --out data/curated/curated_train_K=700h.csv
 ```
 
-**Training:**
+**Training**
 
 ```bash
 python -m trainers.bsrrn \
@@ -287,7 +223,7 @@ python -m trainers.bsrrn \
   --exp.name 251007_bsrrn_cvar_K700h_a0.10_s7
 ```
 
-**Evaluation:**
+**Evaluation**
 
 ```bash
 python -m eval.eval \
@@ -299,7 +235,7 @@ python -m eval.eval \
 
 ## Configuration (key files & flexibility knobs)
 
-### `configs/data.yaml` (global data routing & quick filters)
+### `configs/data.yaml`
 
 ```yaml
 data:
@@ -316,15 +252,13 @@ data:
   force_rebuild: false
   verify_checksums: true
 
-  # Global *filters* used by scoring/selection loaders for fast, focused runs
+  # Global filters for quick, focused runs (honored by scoring & selection)
   filters:
-    languages: ["en"]          # set [] or null for all languages
-    sample_rates: [16000]      # e.g., focus on 16 kHz
+    languages: ["en"]          # [] or null = all
+    sample_rates: [16000]      # e.g., focus on 16k
     distortions: []            # e.g., ["noise","reverb"]; empty = all
-    max_hours: null            # cap size for quick experiments
+    max_hours: null            # cap size for fast experiments
 ```
-
-> **Why filters?** Enable English-only, 16 kHz-only, or small-hour caps **without code changes**.
 
 ### `configs/select/cvar.yaml`
 
@@ -354,45 +288,253 @@ distortion:
 
 ---
 
-## Datasets Module (first-class support)
+## Critical Code Snippets (minimum working — keep CLIs stable)
 
-**Goal:** a single CLI (`datasets.cli`) manages **download → prepare → verify → manifest** for any dataset. Training never changes; only manifests change.
+```python
+// FILE: selector/registry.py
+from typing import Dict, Type
+_REGISTRY: Dict[str, Type] = {}
+def register_selector(name: str):
+    def deco(cls):
+        if name in _REGISTRY: raise KeyError(f"Selector '{name}' already registered")
+        _REGISTRY[name] = cls
+        return cls
+    return deco
+def build(name: str, **kwargs):
+    try: cls = _REGISTRY[name]
+    except KeyError as e: raise KeyError(f"Unknown selector '{name}'. Known: {list(_REGISTRY)}") from e
+    return cls(**kwargs)
+```
 
-**Key files**
+```python
+// FILE: selector/base.py
+from abc import ABC, abstractmethod
+import pandas as pd
+class BaseSelector(ABC):
+    def __init__(self, **kwargs): self.kwargs = kwargs
+    @abstractmethod
+    def select(self, df_scores: pd.DataFrame) -> pd.DataFrame: ...
+```
 
-* `datasets/cli.py` — runs stages with `--dataset_cfg` + `--data_cfg`.
-* `datasets/base.py` — `BaseDataset` with `_write_manifest()`.
-* `datasets/urgent2026.py` — adapter for Track-1 (pre-simulated **or** run simulation via the official repo).
-* `datasets/registry.py` — registers datasets by name.
-* `configs/datasets/urgent2026.yaml` — where to find pre-simulated pack or how to simulate.
-* `configs/datasets/TEMPLATE.yaml` — copy to add a new dataset.
+```python
+// FILE: selector/__main__.py
+import argparse, json, pandas as pd, logging
+from omegaconf import OmegaConf
+from .registry import build
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--config", required=True)
+    ap.add_argument("--scores", required=True)
+    ap.add_argument("--quotas")
+    ap.add_argument("--out", required=True)
+    args = ap.parse_args()
+    cfg = OmegaConf.load(args.config)
+    if args.quotas: cfg.select.quotas = args.quotas
+    df = pd.read_parquet(args.scores)
+    selector = build(cfg.select.name, **OmegaConf.to_container(cfg.select, resolve=True))
+    df_sel = selector.select(df)
+    df_sel[["utt_id"]].to_csv(args.out, index=False)
+    meta = {"config": OmegaConf.to_container(cfg, resolve=True), "scores_path": args.scores, "n_selected": int(df_sel.shape[0])}
+    with open(args.out.replace(".csv","_meta.json"), "w") as f: json.dump(meta, f, indent=2)
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO); main()
+```
 
-**Reasoning:** Centralizing data setup eliminates “where is the data?” and “what do I change to train on it?”; manifests unify formats so the rest of the pipeline is untouched.
+```python
+// FILE: selector/cvar.py
+import numpy as np, pandas as pd
+from .base import BaseSelector
+from .registry import register_selector
+@register_selector("cvar")
+class CvarSelector(BaseSelector):
+    def __init__(self, K_hours: float, alpha: float, quotas=None, diversity=None, penalties=None, **_):
+        super().__init__(); self.K_hours=float(K_hours); self.alpha=float(alpha)
+        self.quotas=quotas; self.diversity=diversity or {"min_cosine":0.15}; self.penalties=penalties or {"quota_violation":10.0}
+    def select(self, df: pd.DataFrame) -> pd.DataFrame:
+        df=df.copy()
+        for col,key in (("language","languages"),("sr","sample_rates"),("distortion","distortions")):
+            flt=self.kwargs.get("filters",{}).get(key); 
+            if flt: df=df[df[col].isin(flt)]
+        df["hours"]=df["duration_sec"]/3600.0
+        df=df.sort_values("loss_proxy", ascending=False)
+        picked, hours=[], 0.0
+        def ok_div(row,pool):
+            if not pool: return True
+            v=np.asarray(row["ssl_embed"],dtype=float)
+            for p in pool[-50:]:
+                w=np.asarray(p["ssl_embed"],dtype=float)
+                cos=float(np.dot(v,w)/(np.linalg.norm(v)*np.linalg.norm(w)+1e-8))
+                if cos>1-self.diversity["min_cosine"]: return False
+            return True
+        for _,r in df.iterrows():
+            if hours>=self.K_hours: break
+            if ok_div(r,picked):
+                picked.append(r); hours+=r["hours"]
+        return pd.DataFrame(picked)
+```
+
+```python
+// FILE: scoring/score.py
+import argparse, pandas as pd, logging, json
+from omegaconf import OmegaConf
+def load_manifest_iter(path):
+    with open(path,"r",encoding="utf-8") as f:
+        for line in f: yield json.loads(line)
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument("--config", required=True)
+    ap.add_argument("data.manifest")
+    ap.add_argument("--out", required=True)
+    args=ap.parse_args()
+    _=OmegaConf.load(args.config)  # reserved
+    rows=[]
+    for rec in load_manifest_iter(getattr(args,"data.manifest")):
+        rows.append({"utt_id":rec["utt_id"],"path":rec["path"],"distortion":rec.get("distortion","unknown"),
+                     "language":rec.get("language","unknown"),"sr":rec.get("sr",16000),
+                     "duration_sec":rec["duration_sec"],"loss_proxy":0.0,"ssl_embed":[0.0,0.0,0.0]})
+    pd.DataFrame(rows).to_parquet(args.out,index=False)
+    logging.info(f"Wrote {len(rows)} rows to {args.out}")
+if __name__=="__main__": logging.basicConfig(level=logging.INFO); main()
+```
+
+```python
+// FILE: trainers/bsrrn.py
+import argparse, os, subprocess
+from omegaconf import OmegaConf
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument("--config", required=True)
+    ap.add_argument("--curated_list", required=True)
+    ap.add_argument("--exp.name", dest="exp_name", default=None)
+    args, unknown=ap.parse_known_args()
+    cfg=OmegaConf.load(args.config)
+    if args.exp_name: cfg.exp.name=args.exp_name
+    exp_dir=os.path.join("experiments", cfg.exp.name)
+    os.makedirs(os.path.join(exp_dir,"train","checkpoints"), exist_ok=True)
+    OmegaConf.save(cfg, os.path.join(exp_dir,"config.yaml"))
+    cmd=["python", os.path.join(cfg.paths.baseline_repo,"baseline_code/train_se.py"),
+         "--config_file", cfg.train.bsrrn_config, "--curated_list", args.curated_list,
+         "--exp_dir", os.path.join(exp_dir,"train")]
+    cmd+=unknown; subprocess.check_call(cmd)
+if __name__=="__main__": main()
+```
+
+```python
+// FILE: datasets/cli.py
+import argparse
+from omegaconf import OmegaConf
+from .registry import build_dataset
+def main():
+    ap=argparse.ArgumentParser()
+    ap.add_argument("--data_cfg", default="configs/data.yaml")
+    ap.add_argument("--dataset_cfg", required=True)
+    ap.add_argument("--stage", choices=["download","prepare","verify","manifest","all"], default="all")
+    ap.add_argument("--split", choices=["train","dev","test","all"], default="all")
+    args=ap.parse_args()
+    dcfg=OmegaConf.load(args.dataset_cfg); gcfg=OmegaConf.load(args.data_cfg)
+    ds=build_dataset(dcfg,gcfg)
+    if args.stage in ("download","all"): ds.download()
+    if args.stage in ("prepare","all"):  ds.prepare()
+    if args.stage in ("verify","all"):   ds.verify()
+    if args.stage in ("manifest","all"): ds.build_manifests(split=args.split)
+if __name__=="__main__": main()
+```
+
+```python
+// FILE: datasets/base.py
+from abc import ABC, abstractmethod
+from pathlib import Path
+from omegaconf import DictConfig
+import json, os
+class BaseDataset(ABC):
+    def __init__(self, dataset_cfg: DictConfig, global_cfg: DictConfig):
+        self.dcfg=dataset_cfg; self.gcfg=global_cfg
+        self.root=Path(os.getenv("DATA_ROOT", self.gcfg.data.root)).resolve()
+        self.dirs={"raw":Path(self.gcfg.data.dirs.raw.format(dataset=self.dcfg.dataset.name)).resolve(),
+                   "external":Path(self.gcfg.data.dirs.external.format(dataset=self.dcfg.dataset.name)).resolve(),
+                   "processed":Path(self.gcfg.data.dirs.processed.format(dataset=self.dcfg.dataset.name)).resolve()}
+        for p in self.dirs.values(): p.mkdir(parents=True, exist_ok=True)
+    def download(self): pass
+    def prepare(self): pass
+    def verify(self): pass
+    @abstractmethod
+    def build_manifests(self, split: str = "all"): ...
+    def _write_manifest(self, rows, split: str):
+        out_map=self.gcfg.data.manifests; out_path=Path(getattr(out_map, split))
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with out_path.open("w",encoding="utf-8") as f:
+            for r in rows: f.write(json.dumps(r, ensure_ascii=False)+"\n")
+        return str(out_path)
+```
+
+```python
+// FILE: datasets/registry.py
+from typing import Dict, Type
+from .base import BaseDataset
+from .urgent2026 import Urgent2026Dataset
+_REGISTRY: Dict[str, Type[BaseDataset]]={"urgent2026": Urgent2026Dataset}
+def register_dataset(name: str):
+    def deco(cls):
+        if name in _REGISTRY: raise KeyError(f"{name} already registered")
+        _REGISTRY[name]=cls; return cls
+    return deco
+def build_dataset(dataset_cfg, global_cfg)->BaseDataset:
+    name=dataset_cfg.dataset.name; cls=_REGISTRY.get(name)
+    if not cls: raise KeyError(f"Unknown dataset '{name}'. Known: {list(_REGISTRY)}")
+    return cls(dataset_cfg, global_cfg)
+```
+
+```python
+// FILE: datasets/urgent2026.py
+from pathlib import Path
+from typing import Iterable, Dict, Any
+import subprocess, glob, soundfile as sf, os
+from .base import BaseDataset
+def _iter_wavs(pattern: str):
+    for p in glob.glob(pattern, recursive=True):
+        if p.lower().endswith(".wav"): yield p
+def _infer_label(path: str, keys=("language","distortion"))->Dict[str,str]:
+    low=path.lower(); lab={}
+    if "language" in keys:
+        for lg in ("en","zh","ja","de","fr","es","it","ko","ru"):
+            if f"/{lg}/" in low or f"_{lg}_" in low: lab["language"]=lg; break
+    if "distortion" in keys:
+        for d in ("reverb","noise","clip","codec","packetloss","bandlimit","device","clean"):
+            if f"/{d}/" in low or f"_{d}_" in low: lab["distortion"]=d; break
+    return lab
+class Urgent2026Dataset(BaseDataset):
+    def download(self): pass  # path configured in YAML
+    def prepare(self):
+        sim=self.dcfg.dataset.simulation
+        if bool(sim.use):
+            repo=Path(sim.baseline_repo); out=Path(sim.out_dir); out.mkdir(parents=True, exist_ok=True)
+            env=os.environ.copy()
+            if "ffmpeg_path" in sim and sim.ffmpeg_path: env["FFMPEG_BIN"]=sim.ffmpeg_path
+            subprocess.check_call(["python", str(Path(repo,"simulation/simulate_data_from_param.py")),
+                                   "--param_json", str(Path(sim.params_json)), "--out_dir", str(out)], env=env)
+    def verify(self): pass
+    def build_manifests(self, split: str="all"):
+        cfg=self.dcfg; globs=cfg.dataset.globs
+        split_list=["train","dev","test"] if split=="all" else [split]
+        for sp in split_list:
+            pat=getattr(globs, sp); rows=[]
+            for wav in _iter_wavs(pat):
+                try: info=sf.info(wav); dur=float(info.duration); sr=int(info.samplerate)
+                except Exception: continue
+                row={"utt_id":Path(wav).stem,"path":str(Path(wav).resolve()),
+                     "duration_sec":dur,"sr":sr,"split":sp}
+                inf=[]; 
+                if bool(cfg.dataset.infer.language_from_path): inf.append("language")
+                if bool(cfg.dataset.infer.distortion_from_path): inf.append("distortion")
+                row.update(_infer_label(wav, keys=tuple(inf))); rows.append(row)
+            outp=self._write_manifest(rows, sp); print(f"[urgent2026] Wrote {len(rows)} rows → {outp}")
+```
 
 ---
 
-## Naming, Artifacts, and Checkpoints
+## Requirements, Makefile, Ignore (runtime + dev)
 
-* Experiment names from `configs/base.yaml`, e.g.:
-
-  ```
-  ${now:%y%m%d}_${train.model}_${select.name}_K${select.K_hours}h_a${select.alpha}_s${seed}
-  ```
-* Artifacts under `experiments/{exp_name}/`:
-
-  * `config.yaml` (frozen merged config)
-  * `selection.csv` and `selection_meta.json` (hashes: `scores.parquet`, `quotas.yaml`, code SHA)
-  * `train/checkpoints/{best.ckpt,last.ckpt,epoch-*.ckpt}`
-  * `train/logs/{console.txt,events.jsonl}`
-  * `eval/{metrics_*.json,slice_reports/*.csv}`
-* Maintain a `experiments/runs.csv` registry:
-  `exp_name, git_sha, config_sha, selection_sha, model, epochs, train_minutes, best_val_metric, path`.
-
----
-
-## Requirements, Makefile, and Ignore
-
-**requirements.txt**
+**`requirements.txt`**
 
 ```
 numpy>=1.26
@@ -416,29 +558,20 @@ ruff>=0.4
 mypy>=1.8
 ```
 
-**Makefile**
+**`Makefile`**
 
 ```make
 .PHONY: setup lint fmt test run_all
-
 setup:
 	python -m venv .venv && . .venv/bin/activate && pip install -U pip && pip install -r requirements.txt
 	git submodule update --init --recursive
-
-lint:
-	ruff check .
-
-fmt:
-	black .
-
-test:
-	pytest -q
-
-run_all:
-	bash scripts/run_all.sh
+lint:  ; ruff check .
+fmt:   ; black .
+test:  ; pytest -q
+run_all: ; bash scripts/run_all.sh
 ```
 
-**.gitignore**
+**`.gitignore`**
 
 ```
 __pycache__/
@@ -456,426 +589,184 @@ third_party/urgent2026_baseline/.venv/
 
 ---
 
-## Critical Code Snippets (paste exactly unless improving compatibly)
-
-> These are minimum working versions used in early batches. You may refine internals later, but **do not** change public CLIs or schemas.
-
-```python
-// FILE: selector/registry.py
-from typing import Dict, Type
-
-_REGISTRY: Dict[str, Type] = {}
-
-def register_selector(name: str):
-    def deco(cls):
-        if name in _REGISTRY:
-            raise KeyError(f"Selector '{name}' already registered")
-        _REGISTRY[name] = cls
-        return cls
-    return deco
-
-def build(name: str, **kwargs):
-    try:
-        cls = _REGISTRY[name]
-    except KeyError as e:
-        raise KeyError(f"Unknown selector '{name}'. Known: {list(_REGISTRY)}") from e
-    return cls(**kwargs)
-```
-
-```python
-// FILE: selector/base.py
-from __future__ import annotations
-from abc import ABC, abstractmethod
-import pandas as pd
-
-class BaseSelector(ABC):
-    """Base class for data selection strategies."""
-    def __init__(self, **kwargs):
-        self.kwargs = kwargs
-
-    @abstractmethod
-    def select(self, df_scores: pd.DataFrame) -> pd.DataFrame:
-        """Return a DataFrame with at least ['utt_id'] for selected rows."""
-        raise NotImplementedError
-```
-
-```python
-// FILE: selector/__main__.py
-import argparse, json, pandas as pd, logging
-from omegaconf import OmegaConf
-from .registry import build
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--config", required=True, help="YAML for selector params")
-    ap.add_argument("--scores", required=True, help="Path to scores.parquet")
-    ap.add_argument("--quotas", required=False, help="YAML of coverage quotas")
-    ap.add_argument("--out", required=True, help="Output curated CSV path")
-    args = ap.parse_args()
-
-    cfg = OmegaConf.load(args.config)
-    if args.quotas:
-        cfg.select.quotas = args.quotas
-    df = pd.read_parquet(args.scores)
-
-    selector = build(cfg.select.name, **OmegaConf.to_container(cfg.select, resolve=True))
-    df_sel = selector.select(df)
-
-    df_sel[["utt_id"]].to_csv(args.out, index=False)
-    meta = {
-        "config": OmegaConf.to_container(cfg, resolve=True),
-        "scores_path": args.scores,
-        "n_selected": int(df_sel.shape[0]),
-    }
-    with open(args.out.replace(".csv", "_meta.json"), "w") as f:
-        json.dump(meta, f, indent=2)
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    main()
-```
-
-```python
-// FILE: selector/cvar.py
-from __future__ import annotations
-import numpy as np, pandas as pd
-from .base import BaseSelector
-from .registry import register_selector
-
-@register_selector("cvar")
-class CvarSelector(BaseSelector):
-    """
-    Select K hours minimizing CVaR_alpha of a proxy loss L(u),
-    while meeting (approximate) quotas and enforcing diversity.
-    Required columns: ['utt_id','duration_sec','loss_proxy','distortion','language','sr','ssl_embed']
-    """
-    def __init__(self, K_hours: float, alpha: float, quotas=None, diversity=None, penalties=None, **_):
-        super().__init__()
-        self.K_hours = float(K_hours)
-        self.alpha = float(alpha)
-        self.quotas = quotas
-        self.diversity = diversity or {"min_cosine": 0.15}
-        self.penalties = penalties or {"quota_violation": 10.0}
-
-    def select(self, df: pd.DataFrame) -> pd.DataFrame:
-        df = df.copy()
-        # Optional upstream filters (see configs/data.yaml)
-        for col, key in (("language","languages"),("sr","sample_rates"),("distortion","distortions")):
-            flt = self.kwargs.get("filters", {}).get(key)
-            if flt: df = df[df[col].isin(flt)]
-        df["hours"] = df["duration_sec"] / 3600.0
-
-        # Tail focus (greedy; replace with true CVaR solver later)
-        df = df.sort_values("loss_proxy", ascending=False)
-        picked, hours = [], 0.0
-
-        def ok_diversity(row, pool):
-            if not pool: return True
-            v = np.asarray(row["ssl_embed"], dtype=float)
-            for p in pool[-50:]:
-                w = np.asarray(p["ssl_embed"], dtype=float)
-                denom = (np.linalg.norm(v)*np.linalg.norm(w) + 1e-8)
-                cos = float(np.dot(v,w) / denom)
-                if cos > 1 - self.diversity["min_cosine"]:
-                    return False
-            return True
-
-        for _, row in df.iterrows():
-            if hours >= self.K_hours: break
-            if ok_diversity(row, picked):
-                picked.append(row)
-                hours += row["hours"]
-        return pd.DataFrame(picked)
-```
-
-```python
-// FILE: scoring/score.py
-import argparse, pandas as pd, logging, json
-from omegaconf import OmegaConf
-
-def load_manifest_iter(path):
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            yield json.loads(line)
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--config", required=True)
-    ap.add_argument("data.manifest", help="JSONL (utt_id,path,distortion,language,sr,duration_sec)")
-    ap.add_argument("--out", required=True)
-    args = ap.parse_args()
-
-    cfg = OmegaConf.load(args.config)
-    rows = []
-    for rec in load_manifest_iter(getattr(args, "data.manifest")):
-        rows.append({
-            "utt_id": rec["utt_id"],
-            "path": rec["path"],
-            "distortion": rec.get("distortion","unknown"),
-            "language": rec.get("language","unknown"),
-            "sr": rec.get("sr",16000),
-            "duration_sec": rec["duration_sec"],
-            "loss_proxy": 0.0,
-            "ssl_embed": [0.0, 0.0, 0.0],
-        })
-    pd.DataFrame(rows).to_parquet(args.out, index=False)
-    logging.info(f"Wrote {len(rows)} rows to {args.out}")
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    main()
-```
-
-```python
-// FILE: trainers/bsrrn.py
-import argparse, os, subprocess
-from omegaconf import OmegaConf
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--config", required=True)
-    ap.add_argument("--curated_list", required=True)
-    ap.add_argument("--exp.name", dest="exp_name", required=False, default=None)
-    args, unknown = ap.parse_known_args()
-
-    cfg = OmegaConf.load(args.config)
-    if args.exp_name:
-        cfg.exp.name = args.exp_name
-    exp_dir = os.path.join("experiments", cfg.exp.name)
-    os.makedirs(os.path.join(exp_dir, "train", "checkpoints"), exist_ok=True)
-    OmegaConf.save(cfg, os.path.join(exp_dir, "config.yaml"))
-
-    cmd = [
-        "python",
-        os.path.join(cfg.paths.baseline_repo, "baseline_code/train_se.py"),
-        "--config_file", cfg.train.bsrrn_config,
-        "--curated_list", args.curated_list,
-        "--exp_dir", os.path.join(exp_dir, "train"),
-    ]
-    cmd += unknown
-    subprocess.check_call(cmd)
-
-if __name__ == "__main__":
-    main()
-```
-
-```python
-// FILE: tools/namegen.py
-from datetime import datetime
-def build_exp_name(model:str, selector:str, K:int, alpha:float, seed:int)->str:
-    ts = datetime.now().strftime("%y%m%d")
-    return f"{ts}_{model}_{selector}_K{K}h_a{alpha:.2f}_s{seed}"
-```
-
-```python
-// FILE: tools/manifest_utils.py
-import pandas as pd
-def filter_wav_scp(wav_scp_in:str, selection_csv:str, wav_scp_out:str):
-    keep = set(pd.read_csv(selection_csv)["utt_id"].tolist())
-    with open(wav_scp_in) as fi, open(wav_scp_out, "w") as fo:
-        for line in fi:
-            uid = line.split()[0]
-            if uid in keep:
-                fo.write(line)
-```
-
-```python
-// FILE: datasets/cli.py
-import argparse
-from omegaconf import OmegaConf
-from .registry import build_dataset
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--data_cfg", default="configs/data.yaml")
-    ap.add_argument("--dataset_cfg", required=True)
-    ap.add_argument("--stage", choices=["download","prepare","verify","manifest","all"], default="all")
-    ap.add_argument("--split", choices=["train","dev","test","all"], default="all")
-    args = ap.parse_args()
-
-    dcfg = OmegaConf.load(args.dataset_cfg)
-    gcfg = OmegaConf.load(args.data_cfg)
-    ds = build_dataset(dcfg, gcfg)
-
-    if args.stage in ("download","all"): ds.download()
-    if args.stage in ("prepare","all"):  ds.prepare()
-    if args.stage in ("verify","all"):   ds.verify()
-    if args.stage in ("manifest","all"): ds.build_manifests(split=args.split)
-
-if __name__ == "__main__":
-    main()
-```
-
-```python
-// FILE: datasets/base.py
-from __future__ import annotations
-from abc import ABC, abstractmethod
-from pathlib import Path
-from omegaconf import DictConfig
-import json, os
-
-class BaseDataset(ABC):
-    """Unified interface so training never changes when switching datasets."""
-
-    def __init__(self, dataset_cfg: DictConfig, global_cfg: DictConfig):
-        self.dcfg = dataset_cfg
-        self.gcfg = global_cfg
-        self.root = Path(os.getenv("DATA_ROOT", self.gcfg.data.root)).resolve()
-        self.dirs = {
-            "raw": Path(self.gcfg.data.dirs.raw.format(dataset=self.dcfg.dataset.name)).resolve(),
-            "external": Path(self.gcfg.data.dirs.external.format(dataset=self.dcfg.dataset.name)).resolve(),
-            "processed": Path(self.gcfg.data.dirs.processed.format(dataset=self.dcfg.dataset.name)).resolve(),
-        }
-        for p in self.dirs.values(): p.mkdir(parents=True, exist_ok=True)
-
-    def download(self): pass
-    def prepare(self): pass
-    def verify(self): pass
-
-    @abstractmethod
-    def build_manifests(self, split: str = "all"): ...
-
-    def _write_manifest(self, rows, split: str):
-        out_map = self.gcfg.data.manifests
-        out_path = Path(getattr(out_map, split))
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        with out_path.open("w", encoding="utf-8") as f:
-            for r in rows:
-                f.write(json.dumps(r, ensure_ascii=False) + "\n")
-        return str(out_path)
-```
-
-```python
-// FILE: datasets/registry.py
-from typing import Dict, Type
-from .base import BaseDataset
-from .urgent2026 import Urgent2026Dataset
-
-_REGISTRY: Dict[str, Type[BaseDataset]] = {
-    "urgent2026": Urgent2026Dataset
-}
-
-def register_dataset(name: str):
-    def deco(cls):
-        if name in _REGISTRY: raise KeyError(f"{name} already registered")
-        _REGISTRY[name] = cls
-        return cls
-    return deco
-
-def build_dataset(dataset_cfg, global_cfg) -> BaseDataset:
-    name = dataset_cfg.dataset.name
-    cls = _REGISTRY.get(name)
-    if not cls:
-        raise KeyError(f"Unknown dataset '{name}'. Known: {list(_REGISTRY)}")
-    return cls(dataset_cfg, global_cfg)
-```
-
-```python
-// FILE: datasets/urgent2026.py
-from __future__ import annotations
-from pathlib import Path
-from typing import Iterable, Dict, Any
-import subprocess, glob, soundfile as sf, os
-from .base import BaseDataset
-
-def _iter_wavs(pattern: str):
-    for p in glob.glob(pattern, recursive=True):
-        if p.lower().endswith(".wav"): yield p
-
-def _infer_label(path: str, keys=("language","distortion")) -> Dict[str,str]:
-    low = path.lower()
-    lab = {}
-    if "language" in keys:
-        for lg in ("en","zh","ja","de","fr","es","it","ko","ru"):
-            if f"/{lg}/" in low or f"_{lg}_" in low:
-                lab["language"] = lg; break
-    if "distortion" in keys:
-        for d in ("reverb","noise","clip","codec","packetloss","bandlimit","device","clean"):
-            if f"/{d}/" in low or f"_{d}_" in low:
-                lab["distortion"] = d; break
-    return lab
-
-class Urgent2026Dataset(BaseDataset):
-    """Adapter for URGENT Track-1 simulated data (pre-sim or run simulation)."""
-
-    def download(self): pass  # organizers typically share packs; path is configured
-
-    def prepare(self):
-        sim = self.dcfg.dataset.simulation
-        if bool(sim.use):
-            repo = Path(sim.baseline_repo)
-            out = Path(sim.out_dir); out.mkdir(parents=True, exist_ok=True)
-            env = os.environ.copy()
-            if "ffmpeg_path" in sim and sim.ffmpeg_path:
-                env["FFMPEG_BIN"] = sim.ffmpeg_path
-            subprocess.check_call([
-                "python",
-                str(Path(repo, "simulation/simulate_data_from_param.py")),
-                "--param_json", str(Path(sim.params_json)),
-                "--out_dir", str(out)
-            ], env=env)
-
-    def verify(self): pass
-
-    def build_manifests(self, split: str = "all"):
-        cfg = self.dcfg
-        base = Path(cfg.dataset.pre_simulated.path if bool(cfg.dataset.pre_simulated.use)
-                    else cfg.dataset.simulation.out_dir)
-        globs = cfg.dataset.globs
-        split_list = ["train","dev","test"] if split == "all" else [split]
-        for sp in split_list:
-            pat = getattr(globs, sp)
-            rows = []
-            for wav in _iter_wavs(pat):
-                try:
-                    info = sf.info(wav)
-                    dur = float(info.duration)
-                    sr = int(info.samplerate)
-                except Exception:
-                    continue
-                row: Dict[str, Any] = {
-                    "utt_id": Path(wav).stem,
-                    "path": str(Path(wav).resolve()),
-                    "duration_sec": dur,
-                    "sr": sr,
-                    "split": sp
-                }
-                inf = []
-                if bool(cfg.dataset.infer.language_from_path): inf.append("language")
-                if bool(cfg.dataset.infer.distortion_from_path): inf.append("distortion")
-                row.update(_infer_label(wav, keys=tuple(inf)))
-                rows.append(row)
-            outp = self._write_manifest(rows, sp)
-            print(f"[urgent2026] Wrote {len(rows)} rows → {outp}")
-```
-
----
-
 ## Acceptance Criteria (definition of done)
 
-* Repo tree exactly as in **Repository Layout** (stubs acceptable where marked TODO).
-* `python -m datasets.cli ... --stage all` creates non-empty manifests when `.wav` files exist.
-* `python -m scoring.score ...` writes a valid `scores.parquet` with **required columns**.
-* `python -m selector ...` outputs a CSV with `utt_id` and a meta JSON; **cvar** works naively.
-* `python -m trainers.bsrrn ...` creates `experiments/{exp_name}/train/checkpoints/` and saves `config.yaml`.
-* `README.md` includes Quickstart, repo map, Add-a-selector guide, datasets instructions, reproducibility notes.
-* `requirements.txt`, `pyproject.toml`, `.gitignore`, `Makefile`, and scripts under `scripts/` exist and run.
-* Tests (can be smoke/TODO): CVaR monotonicity vs `K_hours`, seed reproducibility, quota feasibility (skip allowed with TODO).
+* Tree matches **Repository Layout** (stubs OK where TODO).
+* `datasets.cli` creates non-empty manifests when WAVs exist.
+* `scoring.score` writes a valid `scores.parquet` with required columns.
+* `selector` outputs `selection.csv` + `_meta.json` using `cvar` stub.
+* `trainers.bsrrn` creates `experiments/{exp}/train/checkpoints` and writes `config.yaml`.
+* `README.md` has Quickstart, repo map, datasets usage, add-a-selector guide, reproducibility.
+* `requirements.txt`, `pyproject.toml`, `.gitignore`, `Makefile`, and `scripts/` exist and run.
+* Tests (smoke/TODO): CVaR monotonicity vs `K_hours`, seed reproducibility, quota feasibility (can be skip with TODO).
 
 ---
 
-## Batched Prompts (for GPT-5-Codex)
+# Batched Prompts (smaller, with “What & Why”)
 
-> Use the **Master Command**: **`Execute: BATCH N`**.
-> Codex must output one `// FILE:` block per file, with full contents.
+> **Use the Master Command:** `Execute: BATCH <N><LETTER>`
+> If too long, reply: `READY FOR CONTINUE: BATCH <N><LETTER> PART <k>`.
 
-* **BATCH 0 — Datasets**: Create/implement dataset CLI, base, registry, urgent2026 adapter; add `configs/data.yaml`, `configs/datasets/*`.
-* **BATCH 1 — Scaffold**: Create remaining tree, stubs, `requirements.txt`, `pyproject.toml`, `.gitignore`, `Makefile`, minimal `README.md`.
-* **BATCH 2 — Selector plumbing**: Implement registry/base/CLI/CVAR + `configs/select/cvar.yaml`, `configs/quotas.yaml`.
-* **BATCH 3 — Scoring**: Implement `scoring/score.py` and `configs/scoring.yaml`.
-* **BATCH 4 — Trainers**: Implement `trainers/bsrrn.py` and ensure training configs.
-* **BATCH 5 — Eval, scripts, tests**: Add `eval/` stubs, `scripts/run_*.sh`, basic tests.
-* **BATCH 6 — README polish**: Replace `README.md` with full onboarding.
+### BATCH 0A — Datasets: folders & cards
+
+**What & Why:** Create the **datasets scaffold** so future steps have a home. Cards help humans find sources/licensing.
+**Do:** Create `datasets/` tree (incl. `cards/` + `README.md`) and empty `__init__.py`.
+**End check:** folders exist; `datasets/cards/README.md` explains card purpose.
+
+### BATCH 0B — Dataset configs
+
+**What & Why:** Config drives where data lives and how to build manifests.
+**Do:** Add `configs/data.yaml`, `configs/datasets/urgent2026.yaml`, `configs/datasets/TEMPLATE.yaml` with fields shown above.
+**End check:** YAMLs load (no syntax errors), contain keys `data.manifests`, `dataset.pre_simulated`, `dataset.simulation`, `globs`, `infer`.
+
+### BATCH 0C — Base & Registry
+
+**What & Why:** Standard interface so training never changes when switching datasets.
+**Do:** Implement `datasets/base.py`, `datasets/registry.py` (exact CLIs).
+**End check:** `python -c "import datasets; from datasets.registry import build_dataset"` succeeds.
+
+### BATCH 0D — URGENT2026 adapter
+
+**What & Why:** Concrete adapter that knows how to simulate or use pre-sim packs and infer labels from paths.
+**Do:** Implement `datasets/urgent2026.py` as above.
+**End check:** `build_dataset` returns `Urgent2026Dataset`.
+
+### BATCH 0E — Datasets utils
+
+**What & Why:** Room for downloader/extractor/checksums; keep lightweight now.
+**Do:** Create `datasets/utils.py` with `sha256_file`, `download`, `extract` stubs or minimal implementations.
+**End check:** Import works.
+
+### BATCH 0F — Datasets CLI
+
+**What & Why:** Single entrypoint for **download → prepare → verify → manifest**.
+**Do:** Implement `datasets/cli.py` as above.
+**End check:** Running `python -m datasets.cli --help` shows stages; manifests path in config is honored.
+
+### BATCH 0G — Manifests smoke test (optional)
+
+**What & Why:** Validate globs produce JSONL even if small.
+**Do:** With WAVs present, run `--stage manifest`; verify JSONLs under `data/manifests/urgent2026/`.
+
+---
+
+### BATCH 1A — Root scaffold
+
+**What & Why:** Provide repo hygiene & dev tooling.
+**Do:** Add `requirements.txt`, `pyproject.toml`, `.gitignore`, `Makefile`, minimal `README.md`.
+**End check:** `pip install -r requirements.txt` and `make fmt && make lint` pass.
+
+### BATCH 1B — Package inits & stubs
+
+**What & Why:** Prepare folders for upcoming code.
+**Do:** Add `__init__.py` stubs and empty module files per layout (`scoring/`, `selector/`, `trainers/`, `eval/`, `tools/`).
+**End check:** `pytest -q` runs (even if no tests yet).
+
+### BATCH 1C — Scripts stubs
+
+**What & Why:** One-click commands improve usability.
+**Do:** Add `scripts/get_data.sh`, `prepare_manifests.sh` with CLI calls (no-op if not runnable).
+**End check:** `bash scripts/get_data.sh` prints usage or runs.
+
+### BATCH 1D — Tests stubs
+
+**What & Why:** Ensure we can hook CI later.
+**Do:** Add placeholder tests with TODO/xfail.
+**End check:** `pytest -q` passes (ok with xfail/skip).
+
+---
+
+### BATCH 2A — Selector registry & base
+
+**What & Why:** Pluggable selection strategies need a registry + ABC.
+**Do:** Implement `selector/registry.py`, `selector/base.py`.
+**End check:** Import and `register_selector` works.
+
+### BATCH 2B — Selector CLI dispatcher
+
+**What & Why:** Users pick strategies via config; CLI wires it.
+**Do:** Implement `selector/__main__.py`.
+**End check:** `python -m selector --help` shows args.
+
+### BATCH 2C — CVaR (naïve) strategy
+
+**What & Why:** Provide a working baseline focusing tail difficulty + diversity gate.
+**Do:** Implement `selector/cvar.py` minimal version above.
+**End check:** It accepts DataFrame with required columns and returns selected subset.
+
+### BATCH 2D — Selector configs
+
+**What & Why:** Strategy knobs live in YAML.
+**Do:** Add `configs/select/cvar.yaml` and ensure `configs/quotas.yaml` exists.
+**End check:** YAML loads; keys match CLI expectations.
+
+### BATCH 2E — Quick dry-run
+
+**What & Why:** Sanity before full scoring.
+**Do:** Create a tiny fake parquet with required columns and run the selector CLI.
+**End check:** Produces `selection.csv`.
+
+---
+
+### BATCH 3A — Scoring stub
+
+**What & Why:** Enable end-to-end wiring **now**, even before MOS/SSL are real.
+**Do:** Implement `scoring/score.py` that reads manifest JSONL → writes required columns.
+**End check:** Parquet exists with correct schema.
+
+### BATCH 3B — Scoring config
+
+**What & Why:** Batch sizes, device, and output path in YAML.
+**Do:** Add `configs/scoring.yaml`.
+**End check:** YAML loads; tool runs with `--config`.
+
+### BATCH 3C — Score real manifests
+
+**What & Why:** Produce inputs for selector.
+**Do:** Run scoring on `data/manifests/.../train.jsonl`.
+**End check:** `data/scores/train_scores.parquet` exists.
+
+---
+
+### BATCH 4A — Trainer wrapper (BSRNN)
+
+**What & Why:** Centralize training orchestration (paths, checkpoints, logs).
+**Do:** Implement `trainers/bsrrn.py` (above).
+**End check:** Command builds subprocess call and writes `experiments/<exp>/config.yaml`.
+
+### BATCH 4B — Training configs
+
+**What & Why:** Control model/backbone, epochs, etc.
+**Do:** Add/adjust `configs/base.yaml` and `configs/train/bsrrn.yaml` fields referenced by wrapper.
+**End check:** Running the wrapper creates `experiments/<exp>/train/checkpoints` (even if baseline is a dry run or fails later).
+
+---
+
+### BATCH 5A — Eval stubs
+
+**What & Why:** Close the loop; provide a place for official metrics.
+**Do:** Add `eval/eval.py` and `eval/tail_metrics.py` stubs.
+**End check:** CLI runs with `--help`.
+
+### BATCH 5B — Pipeline scripts
+
+**What & Why:** End-to-end convenience.
+**Do:** Add `scripts/run_score.sh`, `run_select.sh`, `run_train.sh`, `run_eval.sh`, `run_all.sh`.
+**End check:** Scripts are executable and echo the right commands.
+
+### BATCH 5C — Minimal tests
+
+**What & Why:** Lock basic behavior.
+**Do:** Add tests for CVaR monotonicity, reproducibility, quota feasibility (skip allowed).
+**End check:** `pytest -q` runs.
+
+---
+
+### BATCH 6 — README polish
+
+**What & Why:** Humans need a 60-second onboarding.
+**Do:** Replace `README.md` with Quickstart, repo map, datasets usage, add-a-selector guide, reproducibility.
+**End check:** README contains commands that match CLIs; copy-paste works.
 
 ---
 
@@ -900,13 +791,13 @@ python -m eval.eval --config configs/eval.yaml --ckpt experiments/251007_bsrrn_c
 ## Non-Goals / Constraints
 
 * **Do not edit** the official baseline submodule in `third_party/urgent2026_baseline`.
-* No absolute paths; respect `DATA_ROOT` and YAML overrides.
-* Keep CLIs stable; add new features/configs without breaking existing commands.
+* No absolute paths (use `DATA_ROOT` and YAML).
+* Keep CLIs stable; new features should be additive.
 
 ---
 
 ## Change Log
 
-* **1.1 (2025-10-07):** Added “Execute: BATCH N” controller and strict `// FILE:` output-format rules.
+* **1.2 (2025-10-07):** Added fine-grained sub-batches with “What & Why”, resilient CONTINUE protocol, re-sync anchor v1.2.
+* **1.1 (2025-10-07):** Added “Execute: BATCH N” controller and strict `// FILE:` output rules.
 * **1.0 (2025-10-07):** Initial end-to-end spec with datasets module, pluggable selector, training wrappers, batched prompts.
-
