@@ -9,6 +9,10 @@
 > - Keep CLIs stable; if you improve internals, **preserve public interfaces**.  
 > - If something is underspecified, emit a TODO stub **without changing the public API**.
 
+## Windows shell hygiene: 
+- When executing PowerShell, use powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "<cmd>".
+- Prefer UTF-8 output: [Console]::OutputEncoding = [Text.UTF8Encoding]::new().
+
 ## How to invoke me (simple, robust)
 - Keep this file **open** in VS Code when you prompt.
 - To build any step, say: **`Execute: BATCH <N><LETTER>`**, e.g., `Execute: BATCH 0A`.  
