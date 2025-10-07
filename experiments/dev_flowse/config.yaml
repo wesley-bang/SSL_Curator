@@ -1,0 +1,8 @@
+exp:
+  name: dev_flowse
+paths:
+  baseline_repo: third_party/urgent2026_baseline
+train:
+  bsrrn_config: configs/train/bsrrn.yaml
+  flowse_config: configs/train/flowse.yaml
+  flowse_entry: baseline_code/train_flowse.py

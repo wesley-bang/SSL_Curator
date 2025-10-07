@@ -1,0 +1,6 @@
+exp:
+  name: dryrun_test
+paths:
+  baseline_repo: third_party/urgent2026_baseline
+train:
+  bsrrn_config: configs/train/bsrrn.yaml
