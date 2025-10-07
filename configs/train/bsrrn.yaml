@@ -1,0 +1,5 @@
+bsrrn:
+  epochs: 50
+  learning_rate: 1.0e-3
+  batch_size: 16
+  seed: 7

@@ -1,16 +1,8 @@
-reverb|en|16000: 5
-noise|en|16000: 5
-codec|zh|16000: 5
-bandlimit|ja|8000: 5
-low_snr|en|48000: 5
-clipping|ja|22050: 4
-codec|en|44100: 4
-bandlimit|zh|16000: 4
-babble|en|24000: 4
-reverb|zh|32000: 4
-noise|ja|16000: 4
-low_snr|zh|48000: 4
-babble|ja|48000: 4
-clipping|en|16000: 4
-noise|zh|24000: 4
-codec|ja|32000: 4
+distortion:
+  reverb: 0.12
+  noise: 0.14
+  clip: 0.14
+  codec: 0.14
+  packetloss: 0.14
+  bandlimit: 0.16
+  device: 0.16

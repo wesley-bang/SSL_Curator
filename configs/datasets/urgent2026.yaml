@@ -1,0 +1,24 @@
+dataset:
+  name: "urgent2026"
+  card: "datasets/cards/urgent2026.md"
+  description: "Official URGENT 2026 Track-1 mixtures and simulations."
+  pre_simulated:
+    use: true
+    packs_root: "${oc.env:DATA_ROOT,data}/external/urgent2026"
+    expected_splits:
+      train: "${dataset.pre_simulated.packs_root}/train"
+      dev: "${dataset.pre_simulated.packs_root}/dev"
+      test: "${dataset.pre_simulated.packs_root}/test"
+  simulation:
+    use: false
+    baseline_repo: "third_party/urgent2026_baseline"
+    params_json: "third_party/urgent2026_baseline/simulation/params/urgent2026.json"
+    out_dir: "${oc.env:DATA_ROOT,data}/external/urgent2026/simulated"
+    ffmpeg_path: null
+  globs:
+    train: "${dataset.pre_simulated.packs_root}/train/**/*.wav"
+    dev: "${dataset.pre_simulated.packs_root}/dev/**/*.wav"
+    test: "${dataset.pre_simulated.packs_root}/test/**/*.wav"
+  infer:
+    language_from_path: true
+    distortion_from_path: true

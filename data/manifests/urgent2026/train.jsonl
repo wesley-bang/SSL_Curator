@@ -1,0 +1,2 @@
+{"utt_id": "u1", "path": "data/audio/u1.wav", "duration_sec": 60.0, "sr": 16000, "language": "en", "distortion": "noise"}
+{"utt_id": "u2", "path": "data/audio/u2.wav", "duration_sec": 45.0, "sr": 16000, "language": "en", "distortion": "reverb"}

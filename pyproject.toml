@@ -1,23 +1,40 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "urgent2026"
+name = "urgent2026-curator"
 version = "0.1.0"
-description = "Coverage-constrained CVaR data curation pipeline for speech corpora"
-readme = "README.md"
-authors = [{ name = "URGENT 2026 Team", email = "team@example.com" }]
-license = { text = "MIT" }
+description = "Config-driven pipeline for URGENT 2026 speech enhancement curation."
 requires-python = ">=3.10"
-dependencies = []
+readme = "README.md"
+dynamic = ["dependencies"]
+
+[project.optional-dependencies]
+dev = [
+  "black>=24.4",
+  "ruff>=0.4",
+  "mypy>=1.8",
+  "pytest>=8.0",
+]
+
+[tool.setuptools]
+packages = ["datasets"]
 
 [tool.black]
-line-length = 100
+line-length = 88
 target-version = ["py310"]
 
 [tool.ruff]
-line-length = 100
-target-version = "py310"
-select = ["E", "F", "I", "B", "UP"]
-ignore = ["E203", "E266", "E501", "B905"]
+line-length = 88
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+strict = false
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+python_files = ["test_*.py", "*_test.py"]

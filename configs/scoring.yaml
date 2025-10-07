@@ -1,0 +1,4 @@
+scoring:
+  batch_size: 4
+  device: "cpu"
+  output: "data/scores/train_scores.parquet"

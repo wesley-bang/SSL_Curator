@@ -1,0 +1,12 @@
+select:
+  name: "cvar"
+  K_hours: 700
+  alpha: 0.10
+  diversity:
+    min_cosine: 0.15
+  penalties:
+    quota_violation: 10.0
+  filters:
+    languages: []
+    sample_rates: []
+    distortions: []

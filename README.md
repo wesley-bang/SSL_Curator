@@ -1,27 +1,79 @@
-# urgent2026 Coverage-Constrained CVaR Data Curation
+# URGENT 2026 Curator
 
-This repository implements the URGENT 2026 Track-1 data curation pipeline. It scores a speech manifest with deterministic proxy measures, enforces coverage constraints via CVaR-optimised selection with diversity and speaker leakage controls, and emits lightweight evaluation summaries.
+Config-driven pipeline for URGENT 2026 Track-1 data curation. Every CLI, config, and workflow is defined in `docs/CODEBASE_SPEC.md`—keep that file open while developing.
 
 ## Quickstart
-1. `python -m venv .venv && .venv/Scripts/activate` (Windows) or `source .venv/bin/activate` (Unix)
-2. `pip install -r requirements.txt`
-3. `bash scripts/run_all.sh`
-4. Inspect outputs: `scores.parquet`, `curated/curated_train_K=10.csv`, `logs/*.{csv,json}`, `eval/eval_report.md`
 
-## Pipeline Overview
-- **scoring.score**: Generates toy data if needed, synthesises audio when files are missing, computes MOS proxies and SSL embeddings (or deterministic fallbacks), and writes `scores.parquet`.
-- **selector.select**: Loads quotas, computes a weighted loss proxy, fills mandatory slice coverage, performs a diversity-aware budget fill, and records CVaR diagnostics plus slice statistics.
-- **eval.tail_metrics**: Joins the curated set with scores, summarises proxy means, tail hardness p10/p25, and per-slice counts in Markdown.
+```bash
+make setup
 
-## Configuration
-- `configs/quotas.yaml` encodes minimum counts per `{distortion}|{lang}|{sr}` slice. Adjust values to tighten or relax coverage.
-- `configs/bs_example.yaml` is a placeholder backbone stub for downstream training glue.
-- The scoring CLI regenerates `data/toy_manifest.csv` deterministically when missing; modify the helper in `scoring/score.py` for custom corpora.
+# 0) build manifests (downloads/prepare/verify as needed)
+python -m datasets.cli --dataset_cfg configs/datasets/urgent2026.yaml --data_cfg configs/data.yaml --stage all
 
-## CLI Highlights
-- `python -m scoring.score --help` exposes MOS backend, SSL layers, and seeding controls.
-- `python -m selector.select --help` documents loss weights, diversity margin, speaker checks, and diagnostic outputs.
-- `python -m eval.tail_metrics --help` prints available report options.
+# 1) score manifests -> scores parquet
+python -m scoring.score --config configs/scoring.yaml data.manifest=data/manifests/urgent2026/train.jsonl --out data/scores/train_scores.parquet
 
-## Testing
-Run `pytest -q` to execute the unit tests covering CVaR, quota feasibility, and diversity guards.
+# 2) select with CVaR -> curated CSV + meta JSON
+python -m selector --config configs/select/cvar.yaml --scores data/scores/train_scores.parquet --quotas configs/quotas.yaml --out data/curated/curated_train_K=700h.csv
+
+# 3a) train baseline (BSRNN)
+python -m trainers.bsrrn --config configs/base.yaml --curated_list data/curated/curated_train_K=700h.csv --exp.name 251007_bsrrn_cvar_K700h_a0.10_s7
+
+# 3b) train baseline (FlowSE)
+python -m trainers.flowse --config configs/base.yaml --curated_list data/curated/curated_train_K=700h.csv --exp.name 251007_flowse_cvar_K700h_a0.10_s7
+
+# 4) evaluate checkpoint
+python -m eval.eval --config configs/eval.yaml --ckpt experiments/251007_bsrrn_cvar_K700h_a0.10_s7/train/checkpoints/best.ckpt
+```
+
+Prefer running the individual steps for clarity. For a scripted variant, use the helpers under `scripts/` (e.g., `scripts/run_all.sh`).
+
+## Repository Map
+
+- `configs/`: YAML source of truth for dataset routing, scoring, selection, quotas, and training.
+- `datasets/`: Dataset registry, CLI, adapters, utils, and cards.
+- `scoring/`: Manifest → scores pipeline (`scoring.score` CLI plus backends).
+- `selector/`: Registry, CLI dispatcher, CVaR baseline, and future strategies.
+- `trainers/`: Wrappers around baseline trainers (BSRNN today).
+- `eval/`: Evaluation CLI and tail-metric helpers.
+- `tools/`: Shared helpers (hashing, manifest utilities, name generation).
+- `scripts/`: Convenience shell scripts for common pipelines.
+- `tests/`: Pytest suite validating selector behaviour and reproducibility.
+- `data/`: Workspace outputs (manifests, scores, curated subsets, etc.).
+
+## Evaluation Config & CLI
+
+- Evaluation defaults live in `configs/eval.yaml` (output directory, checkpoint placeholder, manifest paths, metric list).
+- Metrics are declared as YAML entries with `{name, kind, script, args}`—wire up real scripts later without changing the CLI contract.
+- Running `python -m eval.eval --config configs/eval.yaml --ckpt <ckpt>` writes `plan.json` and `eval_config.yaml` under `experiments/<exp.name>/eval` (see `eval/eval.py` for current stub behaviour; it logs “would run” statements until real metrics are integrated).
+
+## Datasets Usage
+
+1. Configure paths and filters in `configs/data.yaml`.
+2. Choose a dataset adapter via `configs/datasets/*.yaml`.
+3. Build manifests:
+   ```bash
+   python -m datasets.cli --dataset_cfg configs/datasets/urgent2026.yaml --data_cfg configs/data.yaml --stage manifest --split all
+   ```
+4. Inspect generated JSONL files under `data/manifests/<dataset>/`.
+
+Simulation hooks and checksum helpers live in `datasets/utils.py`; follow the adapter pattern in `datasets/urgent2026.py` for new sources.
+
+## Adding a Selector
+
+1. Create a file in `selector/` (e.g., `selector/new_strategy.py`).
+2. Subclass `selector.base.BaseSelector` and decorate with `@selector.registry.register_selector("<name>")`.
+3. Pull parameters from the config (`configs/select/<name>.yaml`) and respect filters/quotas conventions used by CVaR.
+4. Update tests to cover the new behaviour and add CLI wiring if needed.
+
+Selectors must accept a scores DataFrame with the schema generated by `scoring.score` and return a curated subset. Keep public CLI arguments backward-compatible.
+
+## Reproducibility
+
+- All pipelines are config-driven—commit YAML changes with experiment artifacts.
+- `trainers.bsrrn` writes the resolved config at `experiments/<exp>/config.yaml`.
+- Selection determinism is covered by `tests/test_reproducibility.py`; run `pytest -q` before shipping.
+- Avoid absolute paths; rely on `DATA_ROOT` environment variable and the `${...}` substitutions in configs.
+- Use `scripts/run_all.sh` for repeatable end-to-end runs, or invoke individual CLIs with the same parameters to reproduce results.
+
+For deeper guidance, consult `docs/CODEBASE_SPEC.md` (source of truth) before making edits.

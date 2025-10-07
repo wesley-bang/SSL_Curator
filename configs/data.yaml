@@ -1,0 +1,19 @@
+data:
+  dataset: "urgent2026"
+  root: "data"
+  manifests:
+    train: "${data.root}/manifests/${data.dataset}/train.jsonl"
+    dev: "${data.root}/manifests/${data.dataset}/dev.jsonl"
+    test: "${data.root}/manifests/${data.dataset}/test.jsonl"
+  dirs:
+    raw: "${data.root}/raw/${data.dataset}"
+    external: "${data.root}/external/${data.dataset}"
+    processed: "${data.root}/processed/${data.dataset}"
+  force_rebuild: false
+  verify_checksums: true
+
+  filters:
+    languages: ["en"]
+    sample_rates: [16000]
+    distortions: []
+    max_hours: null

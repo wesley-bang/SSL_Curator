@@ -1,0 +1,24 @@
+dataset:
+  name: "template_dataset"
+  card: "datasets/cards/TEMPLATE.md"
+  description: "Template config for adding a new dataset adapter."
+  pre_simulated:
+    use: false
+    packs_root: "${oc.env:DATA_ROOT,data}/external/template_dataset"
+    expected_splits:
+      train: null
+      dev: null
+      test: null
+  simulation:
+    use: false
+    baseline_repo: "third_party/urgent2026_baseline"
+    params_json: "third_party/urgent2026_baseline/simulation/params/TODO.json"
+    out_dir: "${oc.env:DATA_ROOT,data}/external/template_dataset/simulated"
+    ffmpeg_path: null
+  globs:
+    train: "${dataset.pre_simulated.packs_root}/train/**/*.wav"
+    dev: "${dataset.pre_simulated.packs_root}/dev/**/*.wav"
+    test: "${dataset.pre_simulated.packs_root}/test/**/*.wav"
+  infer:
+    language_from_path: false
+    distortion_from_path: false

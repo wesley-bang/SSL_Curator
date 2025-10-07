@@ -1,0 +1,17 @@
+exp:
+  name: "bsrrn_default"
+eval:
+  output_dir: "experiments/${exp.name}/eval"
+  ckpt: null
+  data:
+    manifest: "data/manifests/urgent2026/dev.jsonl"
+    curated: "data/curated/curated_train_K=700h.csv"
+  metrics:
+    - name: "dns_mos"
+      kind: "mos"
+      script: "third_party/urgent2026_baseline/eval/run_dns_mos.py"
+      args: ["--batch_size", "32"]
+    - name: "stoi"
+      kind: "intelligibility"
+      script: "third_party/urgent2026_baseline/eval/run_stoi.py"
+      args: []

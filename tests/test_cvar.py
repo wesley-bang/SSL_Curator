@@ -1,24 +1,35 @@
-﻿from __future__ import annotations
+"""Tests for the CVaR selector behaviour."""
 
-import sys
-from pathlib import Path
+import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-import numpy as np
-import pytest
-
-from selector.utils import cvar
+from selector.cvar import CvarSelector
 
 
-def test_cvar_tail_mean() -> None:
-    values = np.array([0, 1, 2, 3, 4], dtype=np.float32)
-    assert cvar(values, alpha=0.4) == pytest.approx(3.5)
+def _build_scores(num: int = 5) -> pd.DataFrame:
+    rows = []
+    for idx in range(num):
+        rows.append(
+            {
+                "utt_id": f"utt_{idx}",
+                "path": f"/tmp/{idx}.wav",
+                "duration_sec": 30.0 + idx * 5.0,
+                "sr": 16000,
+                "language": "en",
+                "distortion": "noise",
+                "loss_proxy": 1.0 - idx * 0.05,
+                "ssl_embed": [0.1 + idx * 0.01, 0.2, 0.3],
+            }
+        )
+    return pd.DataFrame(rows)
 
 
-def test_cvar_monotonicity() -> None:
-    values = np.array([0, 1, 2, 3, 4], dtype=np.float32)
-    smaller = cvar(values, alpha=0.2, higher_is_worse=False)
-    medium = cvar(values, alpha=0.4, higher_is_worse=False)
-    larger = cvar(values, alpha=0.8, higher_is_worse=False)
-    assert smaller <= medium <= larger
+def test_cvar_selection_monotonicity():
+    df = _build_scores()
+    small = CvarSelector(K_hours=0.02, alpha=0.1)
+    large = CvarSelector(K_hours=0.04, alpha=0.1)
+
+    small_sel = small.select(df)
+    large_sel = large.select(df)
+
+    assert len(large_sel) >= len(small_sel)
+    assert set(small_sel["utt_id"]).issubset(set(large_sel["utt_id"]))
